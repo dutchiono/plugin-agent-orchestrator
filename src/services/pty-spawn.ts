@@ -48,6 +48,42 @@ const ENV_ALLOWLIST = [
   "ANTHROPIC_SMALL_FAST_MODEL",
 ];
 
+function mergePathEntries(
+  currentPath: string | undefined,
+  extras: string[],
+): string | undefined {
+  const delimiter = process.platform === "win32" ? ";" : ":";
+  const existing = (currentPath ?? "")
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  const normalize = (value: string) =>
+    process.platform === "win32" ? value.toLowerCase() : value;
+  for (const entry of [...existing, ...extras]) {
+    const key = normalize(entry);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+  return merged.length > 0 ? merged.join(delimiter) : undefined;
+}
+
+function getWindowsPathFallbacks(): string[] {
+  if (process.platform !== "win32") return [];
+  const appData = process.env.APPDATA;
+  const userProfile = process.env.USERPROFILE;
+  const localAppData = process.env.LOCALAPPDATA;
+  const candidates = [
+    appData ? `${appData}\\npm` : undefined,
+    userProfile ? `${userProfile}\\AppData\\Roaming\\npm` : undefined,
+    localAppData ? `${localAppData}\\OpenAI\\Codex\\bin` : undefined,
+    userProfile ? `${userProfile}\\.bun\\bin` : undefined,
+  ];
+  return candidates.filter((entry): entry is string => !!entry && !!entry.trim());
+}
+
 /**
  * Build a sanitized base environment from process.env, keeping only
  * safe system variables. Agent-specific credentials are injected
@@ -64,6 +100,10 @@ export function buildSanitizedBaseEnv(): Record<string, string> {
   }
   if (!env.COLORTERM) {
     env.COLORTERM = "truecolor";
+  }
+  const mergedPath = mergePathEntries(env.PATH, getWindowsPathFallbacks());
+  if (mergedPath) {
+    env.PATH = mergedPath;
   }
   return env;
 }

@@ -1444,6 +1444,23 @@ export class PTYService {
     let adapter = this.adapterCache.get(agentType);
     if (!adapter) {
       adapter = createAdapter(agentType);
+      if (process.platform === "win32") {
+        const windowsPatched = adapter as BaseCodingAdapter & {
+          __parallaxWindowsCommandPatched?: boolean;
+          getCommand: () => string;
+        };
+        if (!windowsPatched.__parallaxWindowsCommandPatched) {
+          const originalGetCommand = windowsPatched.getCommand.bind(adapter);
+          windowsPatched.getCommand = () => {
+            const command = originalGetCommand();
+            if (command === "claude" || command === "codex") {
+              return `${command}.cmd`;
+            }
+            return command;
+          };
+          windowsPatched.__parallaxWindowsCommandPatched = true;
+        }
+      }
       this.adapterCache.set(agentType, adapter);
     }
     return adapter;

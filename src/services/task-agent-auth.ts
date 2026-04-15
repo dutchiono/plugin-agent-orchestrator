@@ -81,6 +81,13 @@ const DEFAULT_INITIAL_AUTH_WAIT_MS = 2_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 5_000;
 const DEFAULT_BROWSER_ASSIST_TIMEOUT_MS = 750;
 
+function resolveCliCommand(base: "claude" | "codex"): string {
+  if (process.platform === "win32") {
+    return `${base}.cmd`;
+  }
+  return base;
+}
+
 const DEFAULT_BROWSER_CLICK_SELECTORS: Record<
   SupportedTaskAgentAdapter,
   string[]
@@ -389,8 +396,9 @@ export async function probeTaskAgentAuth(
   switch (agentType) {
     case "claude": {
       try {
+        const command = resolveCliCommand("claude");
         const { stdout, stderr } = await deps.execFile(
-          "claude",
+          command,
           ["auth", "status"],
           {
             encoding: "utf8",
@@ -447,8 +455,9 @@ export async function probeTaskAgentAuth(
     }
     case "codex": {
       try {
+        const command = resolveCliCommand("codex");
         const { stdout, stderr } = await deps.execFile(
-          "codex",
+          command,
           ["login", "status"],
           {
             encoding: "utf8",
@@ -512,9 +521,12 @@ function getTaskAgentAuthCommand(
 ): { command: string; args: string[] } | null {
   switch (agentType) {
     case "claude":
-      return { command: "claude", args: ["auth", "login", "--claudeai"] };
+      return {
+        command: resolveCliCommand("claude"),
+        args: ["auth", "login", "--claudeai"],
+      };
     case "codex":
-      return { command: "codex", args: ["login"] };
+      return { command: resolveCliCommand("codex"), args: ["login"] };
     default:
       return null;
   }
