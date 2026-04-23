@@ -5,7 +5,12 @@ import {
 } from "node:child_process";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { PreflightResult } from "coding-agent-adapters";
-import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
+import {
+  type OrchestratorAuthPolicy,
+  readConfigCloudKey,
+  readConfigEnvKey,
+  readOrchestratorAuthPolicy,
+} from "./config-env.js";
 import type { SupportedTaskAgentAdapter } from "./task-agent-frameworks.js";
 
 export type TaskAgentAuthStatusValue =
@@ -781,15 +786,43 @@ export async function augmentTaskAgentPreflightResults(
   results: PreflightResult[],
   options: TaskAgentAuthOptions = {},
 ): Promise<PreflightResult[]> {
+  const policy = readOrchestratorAuthPolicy();
   return await Promise.all(
     results.map(async (result) => {
       const adapterId = normalizeTaskAgentAdapterId(result.adapter);
       if (!adapterId) return result;
       const auth = await probeTaskAgentAuth(adapterId, options);
+      const gated = gatePreflightByAuthPolicy(result, auth, adapterId, policy);
       return {
-        ...result,
+        ...gated,
         auth,
       } as unknown as PreflightResult;
     }),
   );
+}
+
+/**
+ * When policy is `oauth-cli-only`, any adapter that is not authenticated
+ * via a live CLI OAuth session is marked unavailable — even if an API key
+ * is set in env. This prevents silent fallback to per-token billing for
+ * subscription users.
+ */
+function gatePreflightByAuthPolicy(
+  result: PreflightResult,
+  auth: TaskAgentAuthStatus,
+  adapterId: SupportedTaskAgentAdapter,
+  policy: OrchestratorAuthPolicy,
+): PreflightResult {
+  if (policy !== "oauth-cli-only") return result;
+  if (auth.status === "authenticated") return result;
+  if (adapterId !== "claude" && adapterId !== "codex") return result;
+  const hint =
+    auth.loginHint ??
+    getTaskAgentLoginHint(adapterId) ??
+    `Run \`${adapterId} login\` and retry.`;
+  return {
+    ...result,
+    available: false,
+    reason: `OAuth-only policy: ${adapterId} CLI is not logged in. ${hint}`,
+  } as unknown as PreflightResult;
 }

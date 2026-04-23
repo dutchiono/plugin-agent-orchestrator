@@ -42,6 +42,26 @@ export function readConfigCloudKey(key: string): string | undefined {
   return typeof val === "string" ? val : undefined;
 }
 
+export type OrchestratorAuthPolicy = "oauth-cli-only" | "oauth-or-api-key";
+
+/**
+ * OAuth-only policy: refuse to spawn coding CLIs unless a live CLI OAuth
+ * session is verified (claude auth status / codex login status). API keys
+ * in env are ignored as credential sources for the orchestrator.
+ *
+ * Default is `oauth-cli-only` so subscription users never accidentally
+ * fall through to per-token billing via ANTHROPIC_API_KEY / OPENAI_API_KEY.
+ * Set MILADY_ORCHESTRATOR_AUTH_POLICY=oauth-or-api-key to opt into the
+ * legacy behavior (used by CI or headless setups without a human login).
+ */
+export function readOrchestratorAuthPolicy(): OrchestratorAuthPolicy {
+  const raw =
+    process.env.MILADY_ORCHESTRATOR_AUTH_POLICY?.trim() ||
+    readConfigEnvKey("MILADY_ORCHESTRATOR_AUTH_POLICY") ||
+    "";
+  return raw === "oauth-or-api-key" ? "oauth-or-api-key" : "oauth-cli-only";
+}
+
 /**
  * Read the `agents.defaults.orchestrator.codexSubscriptionRestrictedToCodexFramework`
  * flag from Milady's config. Returns false when the flag is unset or the
