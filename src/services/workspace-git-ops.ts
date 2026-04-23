@@ -21,6 +21,43 @@ import type {
 } from "./workspace-service.js";
 
 /**
+ * Create a git worktree off an existing local checkout at a target path
+ * on a new branch. Used by the "patch this repo" flow so the agent works
+ * against the user's current checkout instead of a fresh clone.
+ *
+ * Returns the absolute path of the created worktree.
+ */
+export async function addLocalWorktree(
+  sourceRepoPath: string,
+  worktreePath: string,
+  branchName: string,
+  baseBranch: string,
+): Promise<void> {
+  const { execFileSync } = await import("node:child_process");
+  execFileSync(
+    "git",
+    ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
+    { cwd: sourceRepoPath, stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+/**
+ * Verify a directory is a git repository by checking `git rev-parse --git-dir`.
+ */
+export async function isGitRepo(repoPath: string): Promise<boolean> {
+  const { execFileSync } = await import("node:child_process");
+  try {
+    execFileSync("git", ["rev-parse", "--git-dir"], {
+      cwd: repoPath,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get workspace git status (branch, staged/modified/untracked files).
  */
 export async function getStatus(

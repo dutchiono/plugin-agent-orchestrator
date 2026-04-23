@@ -36,6 +36,13 @@ export interface ProvisionWorkspaceOptions {
   task?: { id: string; role: string; slug?: string };
   /** User-provided credentials */
   userCredentials?: { type: "pat" | "oauth" | "ssh"; token?: string };
+  /**
+   * Absolute path to an existing local git checkout. When set, the workspace
+   * is provisioned as a `git worktree add` off that checkout instead of a
+   * fresh clone. Use for "patch this repo" flows where the agent should work
+   * against the user's current checkout (e.g. the running Milady source tree).
+   */
+  localRepoPath?: string;
 }
 
 export interface WorkspaceResult {

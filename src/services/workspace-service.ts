@@ -26,6 +26,7 @@ import {
   type WorkspaceConfig,
   type WorkspaceEvent,
   WorkspaceService,
+  type WorkspaceStatus,
 } from "git-workspace-service";
 
 import type { AuthPromptCallback } from "./workspace-github.js";
@@ -47,9 +48,11 @@ export type { AuthPromptCallback } from "./workspace-github.js";
 import { readConfigEnvKey } from "./config-env.js";
 import { normalizeRepositoryInput } from "./repo-input.js";
 import {
+  addLocalWorktree,
   commit as gitCommit,
   createPR as gitCreatePR,
   getStatus as gitGetStatus,
+  isGitRepo,
   push as gitPush,
 } from "./workspace-git-ops.js";
 import {
@@ -221,6 +224,10 @@ export class CodingWorkspaceService {
       throw new Error("CodingWorkspaceService not initialized");
     }
 
+    if (options.localRepoPath) {
+      return this.provisionLocalWorktree(options);
+    }
+
     // Normalize common shorthand like owner/repo before handing it to the
     // lower-level clone service, which expects an actual remote URL.
     const repo = normalizeRepositoryInput(options.repo);
@@ -265,6 +272,57 @@ export class CodingWorkspaceService {
 
     this.workspaces.set(workspace.id, result);
     this.log(`Provisioned workspace ${workspace.id}`);
+    return result;
+  }
+
+  /**
+   * Provision a workspace as a `git worktree add` off an existing local
+   * checkout. Used for "patch this repo" flows — the agent works against
+   * a branch of the user's current checkout, so diffs can be reviewed in
+   * place and pushed through the user's existing git remotes.
+   */
+  private async provisionLocalWorktree(
+    options: ProvisionWorkspaceOptions,
+  ): Promise<WorkspaceResult> {
+    const sourceRepoPath = options.localRepoPath;
+    if (!sourceRepoPath) {
+      throw new Error("provisionLocalWorktree requires localRepoPath");
+    }
+    if (!(await isGitRepo(sourceRepoPath))) {
+      throw new Error(
+        `localRepoPath is not a git repository: ${sourceRepoPath}`,
+      );
+    }
+
+    const taskId = options.task?.id ?? `task-${Date.now()}`;
+    const branchPrefix = this.serviceConfig.branchPrefix ?? "milady";
+    const branchName = options.branchName ?? `${branchPrefix}/${taskId}`;
+    const baseBranch = options.baseBranch ?? "main";
+    const baseDir = this.serviceConfig.baseDir as string;
+    const worktreePath = path.join(baseDir, "local-worktrees", taskId);
+
+    await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+    await addLocalWorktree(
+      sourceRepoPath,
+      worktreePath,
+      branchName,
+      baseBranch,
+    );
+
+    const result: WorkspaceResult = {
+      id: taskId,
+      path: worktreePath,
+      branch: branchName,
+      baseBranch,
+      isWorktree: true,
+      repo: sourceRepoPath,
+      status: "ready" as WorkspaceStatus,
+    };
+
+    this.workspaces.set(taskId, result);
+    this.log(
+      `Provisioned local worktree ${taskId} at ${worktreePath} off ${sourceRepoPath}`,
+    );
     return result;
   }
 
