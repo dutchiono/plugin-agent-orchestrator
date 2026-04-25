@@ -1176,6 +1176,32 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
     return summary;
   }
 
+  async failTaskThreadLaunch(
+    threadId: string,
+    message: string,
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await this.taskRegistry.updateThread(threadId, {
+      status: "failed",
+      closedAt: nowIso,
+      summary: message,
+      lastCoordinatorTurnAt: nowIso,
+      metadata: {
+        launchFailedAt: nowIso,
+        launchFailedReason: message,
+      },
+    });
+    await this.taskRegistry.appendEvent({
+      threadId,
+      eventType: "launch_failed",
+      timestamp: Date.now(),
+      summary: "Task launch failed before a session started",
+      data: {
+        message,
+      },
+    });
+  }
+
   async planTaskThreadGraph(input: {
     threadId: string;
     title: string;

@@ -48,8 +48,10 @@ function makeResponse() {
 
 describe("handleAgentRoutes POST /spawn — shell session registers with coordinator", () => {
   const registerTask = vi.fn();
+  const failTaskThreadLaunch = vi.fn();
   const coordinator = {
     registerTask,
+    failTaskThreadLaunch,
     createTaskThread: vi.fn(),
     getTaskThread: vi.fn(),
   };
@@ -80,8 +82,11 @@ describe("handleAgentRoutes POST /spawn — shell session registers with coordin
 
   beforeEach(() => {
     registerTask.mockReset();
+    failTaskThreadLaunch.mockReset();
     ptyService.listSessions.mockClear();
     ptyService.spawnSession.mockClear();
+    coordinator.createTaskThread.mockReset();
+    coordinator.getTaskThread.mockReset();
   });
 
   afterEach(() => {
@@ -127,5 +132,51 @@ describe("handleAgentRoutes POST /spawn — shell session registers with coordin
     expect(context.agentType).toBe("shell");
     expect(context.originalTask).toBe("");
     expect(context.label).toMatch(/^shell-/);
+  });
+
+  it("marks a pre-created task thread failed when PTY spawn throws", async () => {
+    coordinator.createTaskThread.mockResolvedValue({
+      id: "thread-fail-1",
+      title: "Task 1",
+      kind: "mixed",
+      status: "open",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      closedAt: null,
+      archivedAt: null,
+    });
+    ptyService.spawnSession.mockRejectedValueOnce(
+      new Error("Cannot create process, error code: 2"),
+    );
+
+    const req = makeRequest({
+      agentType: "codex",
+      workdir: process.cwd(),
+      task: "test codex",
+    });
+    const res = makeResponse();
+
+    const handled = await handleAgentRoutes(
+      req as unknown as import("http").IncomingMessage,
+      res,
+      "/api/coding-agents/spawn",
+      {
+        // biome-ignore lint/suspicious/noExplicitAny: minimal mock
+        runtime: runtime as any,
+        // biome-ignore lint/suspicious/noExplicitAny: minimal mock
+        ptyService: ptyService as any,
+        workspaceService: null,
+        // biome-ignore lint/suspicious/noExplicitAny: minimal mock
+        coordinator: coordinator as any,
+      },
+    );
+
+    expect(handled).toBe(true);
+    expect(res.getStatus()).toBe(500);
+    expect(failTaskThreadLaunch).toHaveBeenCalledTimes(1);
+    expect(failTaskThreadLaunch).toHaveBeenCalledWith(
+      "thread-fail-1",
+      "Cannot create process, error code: 2",
+    );
   });
 });

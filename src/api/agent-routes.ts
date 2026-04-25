@@ -526,6 +526,7 @@ export async function handleAgentRoutes(
       return true;
     }
 
+    let taskThreadId: string | null = null;
     try {
       const body = await parseBody(req);
       const {
@@ -667,6 +668,7 @@ export async function handleAgentRoutes(
           : requestedThreadId
             ? await coordinator?.getTaskThread(requestedThreadId)
             : null;
+      taskThreadId = taskThread?.id ?? requestedThreadId ?? null;
 
       const session = await ctx.ptyService.spawnSession({
         name: `agent-${Date.now()}`,
@@ -687,7 +689,7 @@ export async function handleAgentRoutes(
         // Let adapter auto-response handle known prompts (permissions, trust, etc.)
         // instantly. The coordinator handles only unrecognized prompts via LLM.
         metadata: {
-          threadId: taskThread?.id ?? requestedThreadId,
+          threadId: taskThreadId,
           requestedType: agentStr,
           ...(metadata as Record<string, unknown>),
           ...(aiderProvider ? { provider: aiderProvider } : {}),
@@ -704,7 +706,7 @@ export async function handleAgentRoutes(
         const defaultLabelPrefix =
           normalizedType === "shell" ? "shell" : "agent";
         await coordinator.registerTask(session.id, {
-          threadId: taskThread?.id ?? requestedThreadId ?? session.id,
+          threadId: taskThreadId ?? session.id,
           agentType:
             agentStr as import("../services/pty-service.js").CodingAgentType,
           label: label || `${defaultLabelPrefix}-${session.id.slice(-8)}`,
@@ -724,6 +726,17 @@ export async function handleAgentRoutes(
         201,
       );
     } catch (error) {
+      const coordinator = getCoordinator(ctx.runtime);
+      if (coordinator && taskThreadId) {
+        try {
+          await coordinator.failTaskThreadLaunch(
+            taskThreadId,
+            error instanceof Error ? error.message : "Failed to spawn agent",
+          );
+        } catch {
+          // Best-effort cleanup only — keep the original spawn error.
+        }
+      }
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to spawn agent",
