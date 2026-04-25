@@ -93,12 +93,19 @@ export function buildSanitizedBaseEnv(): Record<string, string> {
  *   - Chocolatey (%ProgramData%\chocolatey\bin)
  *   - Bun global (%USERPROFILE%\.bun\bin)
  */
-export function getWindowsPathFallbacks(): string[] {
-  if (process.platform !== "win32") return [];
-  const appData = process.env.APPDATA;
-  const localAppData = process.env.LOCALAPPDATA;
-  const userProfile = process.env.USERPROFILE;
-  const programData = process.env.ProgramData ?? process.env.PROGRAMDATA;
+export function getWindowsPathFallbacks(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== "win32") return [];
+  const userProfile = env.USERPROFILE;
+  const appData =
+    env.APPDATA ??
+    (userProfile ? `${userProfile}\\AppData\\Roaming` : undefined);
+  const localAppData =
+    env.LOCALAPPDATA ??
+    (userProfile ? `${userProfile}\\AppData\\Local` : undefined);
+  const programData = env.ProgramData ?? env.PROGRAMDATA;
   const candidates: (string | undefined)[] = [
     appData ? `${appData}\\npm` : undefined,
     localAppData ? `${localAppData}\\OpenAI\\Codex\\bin` : undefined,

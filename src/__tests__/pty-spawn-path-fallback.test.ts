@@ -69,9 +69,25 @@ describe("mergePathEntries", () => {
 
 describe("getWindowsPathFallbacks", () => {
   it("returns an empty array on non-Windows platforms", () => {
-    // Running tests on macOS/Linux — the function short-circuits.
-    if (process.platform === "win32") return;
-    expect(getWindowsPathFallbacks()).toEqual([]);
+    expect(getWindowsPathFallbacks({}, "linux")).toEqual([]);
+  });
+
+  it("derives roaming/local app data from USERPROFILE when APPDATA vars are absent", () => {
+    expect(
+      getWindowsPathFallbacks(
+        {
+          USERPROFILE: "C:\\Users\\epj33",
+          PROGRAMDATA: "C:\\ProgramData",
+        },
+        "win32",
+      ),
+    ).toEqual([
+      "C:\\Users\\epj33\\AppData\\Roaming\\npm",
+      "C:\\Users\\epj33\\AppData\\Local\\OpenAI\\Codex\\bin",
+      "C:\\Users\\epj33\\scoop\\shims",
+      "C:\\ProgramData\\chocolatey\\bin",
+      "C:\\Users\\epj33\\.bun\\bin",
+    ]);
   });
 });
 
